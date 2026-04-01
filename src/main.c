@@ -82,7 +82,6 @@ typedef enum   { PHASE_INSTALL_PREREQS, PHASE_SETUP_ENV, PHASE_READY } Phase;
 typedef struct {
     CheckResult deps;
     Phase       phase;
-    char        title[256];
     char        message[512];
     char        commands[2048];
     int         cmd_count;
@@ -144,14 +143,6 @@ static void FillVerticalGradient(HDC hdc, int x, int y, int w, int h, DWORD topC
 static void DrawRoundRect(HDC hdc, int x, int y, int w, int h, int rx, DWORD fill, DWORD border);
 static void DrawDialogButton(HDC hdc, const RECT *rc, const char *text, int focused, int primary, int disabled);
 
-static void clear_log_view_text(void) {
-    (void)0;
-}
-
-static void append_log_view_utf8(const char *text) {
-    (void)text;
-}
-
 static void close_server_log_pipe(void) {
     if (g_serverLogRead) {
         CloseHandle(g_serverLogRead);
@@ -167,7 +158,6 @@ static void clear_server_logs(void) {
     g_logPartial[0] = '\0';
     g_serverLogCount = 0;
     g_logScroll = 0;
-    clear_log_view_text();
     for (int i = 0; i < 200; i++) g_serverLogLines[i][0] = '\0';
 }
 
@@ -241,7 +231,6 @@ static void poll_server_logs(void) {
         DWORD got = 0;
         if (!ReadFile(g_serverLogRead, chunk, toRead, &got, NULL) || got == 0) break;
         chunk[got] = '\0';
-        append_log_view_utf8(chunk);
         append_server_log_text(chunk);
         g_serverLastLogTick = GetTickCount();
         avail = 0;
@@ -571,12 +560,6 @@ static void prepare_state(void) {
             n++;
         }
         g_state.cmd_count = n;
-        if (n == 1)
-            strncpy(g_state.title, "Install the remaining prerequisite",
-                    sizeof(g_state.title)-1);
-        else
-            snprintf(g_state.title, sizeof(g_state.title),
-                "Install %d missing prerequisites", n);
         strncpy(g_state.message,
             "Open PowerShell, run the commands below, then click Next.",
             sizeof(g_state.message)-1);
@@ -607,8 +590,6 @@ static void prepare_state(void) {
                     g_state.cmd_count++;
                 }
             }
-            strncpy(g_state.title, "Accept Conda Terms of Service",
-                    sizeof(g_state.title)-1);
             strncpy(g_state.message,
                 "Accept the TOS for each Conda channel, then click Next.",
                 sizeof(g_state.message)-1);
@@ -622,8 +603,6 @@ static void prepare_state(void) {
                 OPEN_WEBUI_ENV_NAME, OPEN_WEBUI_PYTHON_VER,
                 OPEN_WEBUI_ENV_NAME);
             g_state.cmd_count = 3;
-            strncpy(g_state.title, "Create the Open WebUI Conda environment",
-                    sizeof(g_state.title)-1);
             strncpy(g_state.message,
                 "Run these 3 commands in PowerShell in order, then click Next.",
                 sizeof(g_state.message)-1);
@@ -635,16 +614,12 @@ static void prepare_state(void) {
                 "pip install open-webui\r\n",
                 OPEN_WEBUI_ENV_NAME);
             g_state.cmd_count = 2;
-            strncpy(g_state.title, "Install Open WebUI in the Conda environment",
-                    sizeof(g_state.title)-1);
             strncpy(g_state.message,
                 "Run these commands in PowerShell, then click Next.",
                 sizeof(g_state.message)-1);
         } else {
             /* ── Phase 3: Everything ready ── */
             g_state.phase = PHASE_READY;
-            strncpy(g_state.title, "All prerequisites detected",
-                    sizeof(g_state.title)-1);
             strncpy(g_state.message,
                 "Environment is ready. Choose host/auth, then click Start Server.",
                 sizeof(g_state.message)-1);
@@ -968,9 +943,6 @@ static int start_openwebui_server(void) {
 
     push_server_log_line("[info] OpenWebUI launch started...");
     push_server_log_line(cmdArgs);
-    append_log_view_utf8("[info] OpenWebUI launch started...\n");
-    append_log_view_utf8(cmdArgs);
-    append_log_view_utf8("\n");
     return 1;
 }
 
@@ -1101,6 +1073,8 @@ static void refresh_action_buttons(void) {
     int isReady = (g_state.phase == PHASE_READY);
     if (isReady) sync_server_open_state();
     int canStop = (isReady && g_serverOpened);
+    int showReadyOptions = isReady;
+    int enableReadyOptions = isReady && !g_serverStarting && !g_serverOpened;
 
     if (g_hNextBtn) {
         if (g_serverStarting)
@@ -1113,12 +1087,12 @@ static void refresh_action_buttons(void) {
             SetWindowTextA(g_hNextBtn, "Next");
     }
 
-    if (g_hNextBtn) ShowWindow(g_hNextBtn, g_serverStarting ? SW_HIDE : SW_SHOW);
+    if (g_hNextBtn) ShowWindow(g_hNextBtn, SW_SHOW);
     if (g_hCopyBtn) ShowWindow(g_hCopyBtn, isReady ? SW_HIDE : SW_SHOW);
-    if (g_hHostBtn) ShowWindow(g_hHostBtn, (isReady && !g_serverStarting && !g_serverOpened) ? SW_SHOW : SW_HIDE);
-    if (g_hAuthBtn) ShowWindow(g_hAuthBtn, (isReady && !g_serverStarting && !g_serverOpened) ? SW_SHOW : SW_HIDE);
-    if (g_hHostBtn) EnableWindow(g_hHostBtn, isReady && !g_serverStarting && !g_serverOpened);
-    if (g_hAuthBtn) EnableWindow(g_hAuthBtn, isReady && !g_serverStarting && !g_serverOpened);
+    if (g_hHostBtn) ShowWindow(g_hHostBtn, showReadyOptions ? SW_SHOW : SW_HIDE);
+    if (g_hAuthBtn) ShowWindow(g_hAuthBtn, showReadyOptions ? SW_SHOW : SW_HIDE);
+    if (g_hHostBtn) EnableWindow(g_hHostBtn, enableReadyOptions);
+    if (g_hAuthBtn) EnableWindow(g_hAuthBtn, enableReadyOptions);
     if (g_hNextBtn) EnableWindow(g_hNextBtn, !g_serverStarting);
 }
 
